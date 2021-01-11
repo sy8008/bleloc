@@ -1,0 +1,8 @@
+<!---->
+<launch>
+  <include file="$(find sele_path_planner)/launch/testreal.launch" />
+  <include file="$(find elevation_mapping_demos)/launch/mytest_toforbreal.launch" />
+  <include file="$(find ai_robot_sensors)/launch/start_seletest.launch" />
+  <include file="$(find ORB_SLAM2_saveload)/launch/orbslam_testtof.launch" />
+    
+</launch>
