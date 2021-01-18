@@ -19,7 +19,14 @@ def getVelocity_cb(data):
 	angle_vel=np.array([[data.angular.x,data.angular.y,data.angular.z]],dtype=np.float32)
 	# print("linear_vel:{}".format(linear_vel))
 
-	
+def judgeQueueDiff(x_queue,thresh):
+	x_list=x_queue.queue
+	for i in range(1,len(x_list)):
+		if(np.abs(x_list[i]-x_list[i-1])>thresh):
+			return False
+	return True
+
+
 global linear_vel,angle_vel
 url = "http://192.168.31.100:2345/bleloc"
 xmin=174
@@ -27,8 +34,8 @@ xmax=376
 ymin=95
 ymax=123
 topomap_x=np.array([161,168,194,217,244,268,295,320,345,363],np.int64)
-topomap_x_small=np.array([194,244,295,345],np.int64)
-
+topomap_x_small=np.array([175,238,308,340],np.int64)
+dist_thresh=13.35*1.5
 
 x_aver=0
 y_aver=0
@@ -61,6 +68,9 @@ rospy.init_node('bleloc', anonymous=True)
 rospy.Subscriber("/cmd_vel", Twist, getVelocity_cb)
 bleloc_p_pub = rospy.Publisher('/pose', Pose, queue_size=1)
 iter=0
+curr_pos_x_thresh_filter=0
+
+curr_pos_x_thresh_filter_disre=0
 
 while not rospy.is_shutdown():
 	iter+=1
@@ -69,6 +79,7 @@ while not rospy.is_shutdown():
 	loc = requests.get(url).json()
 	# print(type(loc))
 	PosX,PosY=loc[u'posX'],loc[u'posY']
+
 
 	kalman.correct(np.array([[PosX],[PosY],[-13.35],[0.0]],np.float32))
 	prediction=kalman.predict()
@@ -84,6 +95,13 @@ while not rospy.is_shutdown():
 	bleloc_p_pub.publish(bleloc_p)
 
 	posx_clip=np.clip(PosX,xmin,xmax)
+	# if(last_pos_x!=0):
+	# 	if(np.abs(last_pos_x-posx_clip)<dist_thresh):
+	# 		curr_pos_x_thresh_filter=posx_clip
+	# 		curr_pos_x_thresh_filter_disre=topomap_x_small[np.argmin(np.abs(posx_clip-topomap_x_small))]
+
+
+	last_pos_x=posx_clip
 	posy_clip=np.clip(PosY,ymin,ymax)
 
 	posx_clip_q.append(posx_clip)
@@ -99,7 +117,10 @@ while not rospy.is_shutdown():
 
 	if (posX_queue.full()):
 		last_pos_x=posX_queue.queue[1]
-		curr_pos_x=posY_queue.queue[2]
+		curr_pos_x=posX_queue.queue[2]
+		if(judgeQueueDiff(posX_queue,dist_thresh)):
+			curr_pos_x_thresh_filter_disre = topomap_x_small[np.argmin(np.abs(curr_pos_x - topomap_x_small))]
+
 	if(v>0):
 		if(curr_pos_x>last_pos_x):
 			curr_pos_x=last_pos_x-v
@@ -109,11 +130,12 @@ while not rospy.is_shutdown():
 
 	posx_rec=topomap_x_small[np.argmin(np.abs(posx_clip-topomap_x_small))]
 	posy_rec=110
-	cv2.circle(draw_map, (int(PosX),469-int(posy_clip)),1, (255, 0, 0), 4)
+	cv2.circle(draw_map, (int(PosX),469-int(PosY)),1, (255, 0, 0), 4)
 	# cv2.circle(draw_map, (int(posx_rec),469-int(posy_rec)),1, point_color, 4)
-	cv2.circle(draw_map, (int(posx_rec), 469 - 110), 1, (0, 0, 255), 4)
+	# cv2.circle(draw_map, (int(posx_rec), 469 - 110), 1, (0, 0, 255), 4)
 	# cv2.circle(draw_map, (int(posx_clip),469-int(posy_clip)),1, (255, 0, 0), 4)
-
+	if(curr_pos_x_thresh_filter_disre!=0):
+		cv2.circle(draw_map, (int(curr_pos_x_thresh_filter_disre), 469 - 110), 1, (0, 0, 255), 4)
 	cv2.imshow("map",draw_map)
 	cv2.waitKey(1)
 	# print(loc)
